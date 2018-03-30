@@ -18,9 +18,10 @@ from src.inflect import inflect
 
 class AutoInsightsLong(object):
     """Designed for long data"""
-    def __init__(self, df=None, categorical_as_ints=False, only_significant=False, sig_level=0.05):
+    def __init__(self, df=None, categorical_as_ints=False, only_significant=False, sig_level=0.05, min_samples=30):
         self.S = inflect.engine()
         self.siglvl = sig_level
+        self.min_samples = min_samples
         if categorical_as_ints:
             self.categorical_as_ints = True
         else:
@@ -78,7 +79,7 @@ class AutoInsightsLong(object):
     @staticmethod
     def id_column_check(string):
         """Takes in a column and returns a check to see if it thinks it's an identifier column"""
-        success = re.match(r'\w*ID|\w*Id|\w*_ID|\w*_Id|\w*_id', string)
+        success = re.match(r'\w*ID|\w*Id|\w*_ID|\w*_Id|\w*_id|account', string, re.IGNORECASE)
         if success:
             return True
         else:
@@ -173,6 +174,7 @@ class AutoInsightsLong(object):
     @staticmethod
     def create_analytical_buckets(tcd):
         """ Creates a dictionary of columns to run thru tests on by type:
+        # bin X bin:   chi-square test for difference, stats
         # bin X cat:   chi-square test for difference, stats
         # bin X cont:  T-test independent by group tests, stats
         # cont X cont:  correlations
@@ -184,8 +186,7 @@ class AutoInsightsLong(object):
             results: dict, keys are the type of analysis
         """
         results = defaultdict(list)
-        # print(tcd.keys())
-        # print(tcd)
+
         if 'binary' in tcd.keys() and 'categorical' in tcd.keys():
             # for chi-square tests
             for i in tcd['binary']:
@@ -222,7 +223,7 @@ class AutoInsightsLong(object):
         """"""
         # TODO: write out the results to a pandas dataframe instead of printing
         for k, v in d_.items():
-            if k == 'bin X cat':
+            if k == 'bin X cat' or k == 'bin X bin':
                 print('---- Running bin X cat ---- ')
                 # run chi-square test
                 for i in v:
