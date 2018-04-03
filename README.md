@@ -3,18 +3,18 @@
 > "You need to write SQL to analyze a database"  
  Automatic Broccoli is there for when you don't know what to look for yet; for when you don't know what exists so you can't write the SQL. 
 
-### Why?
+## Why?
 We wanted to create a data product to support hard-coded dashboard logic by running tests on things we didn't hard code in the background. To run asyncronously to other jobs / queries while using clever caching for speed and retrieval to ask questions and find connections and useful insights.
 
-### Prior Art
+## Prior Art
 [Pandas Profiling](https://github.com/pandas-profiling/pandas-profiling) has done a lot of the heavy lifting for doing inital dataset exploratory data analysis (EDA). It does a great job of generating profile reports in HTML format for a dataset, saving an analyst a lot of time going through that process on their own. This project builds on top of the shoulders of Pandas Profiling by going a few steps further.
 
-### How is Automatic Broccoli different?
+## How is Automatic Broccoli different?
 Current tools do a great job of identifying the datatype of a column, like a numeric, date, string, etc. Using that knowledge descriptive stats can be produced...and that's about where it stops.
 
 Automatic Broccoli goes further in attempting to identify not only the type of column, but its analytical possibilities, especially in relation to the other columns present. Currently, it can detect if a column is a binary, categorical, or continuous and then prepares a dictionary of possible unique combinations of analyses that can be tested. 
 
-Here's an example:
+## Example
 
 ```python
 >>> from auto_insights import AutoInsightsLong
@@ -93,7 +93,11 @@ cont X cont    |  impressions       |  visits            |  2018-04-03 11:29  | 
 bin X bin      |  active            |  nice_person       |  2018-04-03 11:29  |  Non-Active and Active are the farthest apart on nice_person in nice_person. Non-Active maximum on nice_person is 260 and active minimum is on nice_person at 247. Active and Non-Active are the farthest apart on non-nice_person in nice_person. Active maximum on non-nice_person is 271 and non-active minimum is on non-nice_person at 222.   |  0.0555
  
 ## TODO:
+ - Testing!
  - Better date handling
  - Add connections across tables (2+) tables instead of just one table
  - Setup meta database of 
  - Setup input tags for dataset types such as "marketing", "social media" etc.
+ 
+# License
+Copyright (c) 2017 Front Analytics Inc. Licensed under [the MIT License](http://opensource.org/licenses/MIT).
