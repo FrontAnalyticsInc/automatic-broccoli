@@ -1,0 +1,9 @@
+Faker==0.8.12
+ipykernel==4.8.2
+matplotlib==2.2.2
+numpy==1.14.2
+pandas==0.22.0
+pandas-profiling==1.4.1
+scipy==1.0.1
+seaborn==0.8.1
+SQLAlchemy==1.2.6
