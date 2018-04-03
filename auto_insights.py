@@ -5,6 +5,7 @@
 
 import pandas_profiling as pp
 import pandas as pd
+import numpy as np
 from faker import Factory
 from datetime import datetime
 import random
@@ -14,11 +15,12 @@ import sys
 from collections import defaultdict
 import itertools
 from src.inflect import inflect
+import speak_easy
 
 
 class AutoInsightsLong(object):
     """Designed for long data"""
-    def __init__(self, df=None, categorical_as_ints=False, only_significant=False, sig_level=0.05, min_samples=30):
+    def __init__(self, df=None, dataset=None, categorical_as_ints=False, only_significant=False, sig_level=0.05, min_samples=30):
         self.S = inflect.engine()
         self.siglvl = sig_level
         self.min_samples = min_samples
@@ -32,13 +34,16 @@ class AutoInsightsLong(object):
             self.only_significant = False
         self.categorical_int_cutoff = 15
         self.faker = Factory.create()
-        self.content_piece = 'video,article,social_media'.split(',')
+        # self.content_piece = 'video,article,social_media'.split(',')
         self.cat_ordinal = [1, 2, 3, 4, 5]
         if df is not None:
             self.df = df
+            self.dataset = dataset
         else:
             self.df = pd.DataFrame([self.example_record() for _ in range(1000)])
+            self.dataset = 'random'
         self.granularity = self.intro()
+        self.run_date = str(datetime.now())
 
     @staticmethod
     def intro():
@@ -66,14 +71,16 @@ class AutoInsightsLong(object):
         return self.faker.date_time_between_dates(datetime.strptime(d1, f), datetime.strptime(d2, f))
 
     def example_record(self):
+        content_type = 'youtube,article,social media,doubleclick,newspaper'.split(',')
         return {'user_id': self.faker.ascii_email(),  # random user email
                 'active': self.faker.boolean(),  # random status
+                'nice_person': random.choice(['Y', 'N']),
                 'buyer_type': random.choice(['me', 'spouse', 'friend', 'other']),
                 'some_category': random.choice(self.cat_ordinal),
-                'content_type': random.choice(self.content_piece),  # video,article,social_media
+                'content_type': random.choice(content_type),
                 'visits': self.faker.random_number(3),  # id's eg:1,20,28,27
-                'date': self.date_between('mar01-2018', 'mar30-2018'),  # datetime between mar01-2015 to mar15-2015
-                'duration_percent': round(random.uniform(1, 100), 3)  # watch duration perc
+                'date': self.date_between('mar01-2018', 'apr01-2018'),  # datetime between mar01-2015 to mar15-2015
+                'duration_percent': round(random.uniform(1, 100), 3)  # watch duration perc, 1 - np.sqrt(1 - random.random()) #
                 }
 
     @staticmethod
@@ -219,75 +226,167 @@ class AutoInsightsLong(object):
 
         return dict(results)
 
-    def auto_analysis(self, d_):
+    def bin_x_cat_insights(self, pair_list, type_) -> (bool, dict):
+        """Compares a binary column to a categorical column looking for insights
+
+        Args:
+            pair_list: list, contains the names of the columns to be compared
+
+        Returns:
+            dict of results for reporting
+        """
+        # Setup
+        bin_var, cat_var = pair_list
+        cat_unique_values = list(set(self.df[cat_var].values))
+        bin_unique_values = list(set(self.df[bin_var].values))
+        success, bin_label_1, bin_label_2 = speak_easy.binary_checker(bin_var, bin_unique_values)
+        xtab = pd.crosstab(self.df[cat_var], self.df[bin_var])
+
+        if type_ == "bin X bin":
+            success, cat_label_1, cat_label_2 = speak_easy.binary_checker(cat_var, cat_unique_values)
+            xtab.index = [cat_label_1, cat_label_2]
+        else:
+            xtab.index = [i.title() for i in cat_unique_values]
+
+        if success:
+            xtab.columns = bin_label_1, bin_label_2  # relabel so it's easier to work with
+        else:
+            xtab.columns = bin_unique_values
+
+        # Analysis
+        chi2, p, dof, expected = stats.chi2_contingency(xtab)
+        insights = ""
+
+        if p <= self.siglvl:
+            insights += f"Significant difference in {bin_label_1} and {bin_label_2} between {cat_var} groups. "
+
+        if (self.only_significant and insights) or not self.only_significant:
+            insights += speak_easy.cool_crosstabs(xtab, cat_var)
+            # TODO: What to do about the magnitude?
+            if insights:
+                return True, {
+                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p, 4),
+                    'magnitude': np.nan, 'col_1': bin_var, 'col_2': cat_var,
+                }
+            else:
+                return False, {}
+        else:
+            return False, {}
+
+    def bin_x_cont_insights(self, pair_list) -> (bool, dict):
+        """Stuff"""
+        bin_var, cont_var = pair_list
+        bin_unique_values = list(set(self.df[bin_var].values))
+        success, bin_label_1, bin_label_2 = speak_easy.binary_checker(bin_var, bin_unique_values)
+        pos_desc = self.df[self.df[bin_var] == 1][cont_var].describe()
+        neg_desc = self.df[self.df[bin_var] == 0][cont_var].describe()
+        insights = ""
+        t, p_val = stats.ttest_ind_from_stats(mean1=pos_desc['mean'], std1=pos_desc['std'], nobs1=pos_desc['count'],
+                                              mean2=neg_desc['mean'], std2=neg_desc['std'], nobs2=neg_desc['count'])
+        if p_val <= self.siglvl:
+            insights += f"Significant difference in {bin_label_1} and {bin_label_2} in {cont_var}. "
+
+        if (self.only_significant and insights) or not self.only_significant:
+            insights += speak_easy.tight_t_test(bin_var, cont_var, bin_unique_values, pos_desc, neg_desc)
+            if insights:
+                return True, {
+                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
+                    'magnitude': np.nan, 'col_1': bin_var, 'col_2': cont_var,
+                }
+            else:
+                return False, {}
+        else:
+            return False, {}
+
+    def cat_x_cont_insights(self, pair_list):
+        """Compares frequencies in a categorical column to a continuous variable
+
+        Args:
+            pair_list: list, contains the names of the columns to be compared
+
+        Returns:
+            dict of results for reporting
+        """
+        cat_var, cont_var = pair_list
+        tmpdf = self.df[self.df[cat_var].notnull() & (self.df[cont_var].notnull())]  # Filter out nans
+        insights = ""
+        # Anova
+        grps = pd.unique(tmpdf[cat_var].values)
+        d_data = {grp: tmpdf[cont_var][tmpdf[cat_var] == grp] for grp in grps}
+        f, p_val = stats.f_oneway(*d_data.values())
+
+        if p_val <= self.siglvl:
+            insights += f"Significant difference across groups in {cat_var} in {cont_var}. "
+
+        if (self.only_significant and insights) or not self.only_significant:
+            insights += speak_easy.cool_categories()
+            if insights:
+                return True, {
+                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
+                    'magnitude': np.nan, 'col_1': cat_var, 'col_2': cont_var,
+                }
+            else:
+                return False, {}
+        else:
+            return False, {}
+
+    def auto_analysis(self, d_) -> pd.DataFrame:
         """"""
-        # TODO: write out the results to a pandas dataframe instead of printing
+        results = []
         for k, v in d_.items():
             if k == 'bin X cat' or k == 'bin X bin':
-                print('---- Running bin X cat ---- ')
-                # run chi-square test
                 for i in v:
-                    bin_var, cat_var = i
-                    cat_unique_values = list(set(self.df[cat_var].values))
-                    xtab_clean = pd.crosstab(self.df[cat_var], self.df[bin_var])
-                    xtab_read = pd.crosstab(self.df[cat_var], self.df[bin_var], normalize='index')
-                    chi2, p, dof, expected = stats.chi2_contingency(xtab_clean)
-                    if self.only_significant:
-                        if p <= self.siglvl:
-                            print(f"significant difference in {cat_var} between {self.S.join(cat_unique_values)} groups. P val of {p:.2f}")
-                    else:
-                        # want to see sig and non sig analysis
-                        if p <= self.siglvl:
-                            print(f"{self.granularity.title()} are different in {cat_var} between {bin_var} groups. P val of {p:.2f}")
-                            # TODO: bin group 1 is X% higher in cat group Z
-                        else:
-                            print(f"{self.granularity.title()} have no significant difference in {self.S.join(cat_unique_values)} between {bin_var} groups. P val of {p:.2f}")
+                    success, bin_cat_results = self.bin_x_cat_insights(pair_list=i, type_=k)
+                    if success:
+                        bin_cat_results['analysis_type'] = k
+                        results.append(bin_cat_results)
 
             elif k == 'bin X cont':
-                print('---- Running bin X cont ---- ')
                 for i in v:
-                    bin_var, cont_var = i
-                    bin_unique_values = list(set(self.df[bin_var].values))
-                    # Filter out nans
-                    tmpdf = self.df[self.df[bin_var].notnull() & (self.df[cont_var].notnull())]
-                    _, p2 = stats.ttest_ind(tmpdf[cont_var], tmpdf[bin_var])
-                    if self.only_significant:
-                        if p2 <= self.siglvl:
-                            print(f"{bin_unique_values[0]} and {bin_unique_values[1]} {self.S.plural_noun(self.granularity)} differ in {cont_var}. P val of {p2:.2f}")
-                            # TODO: {bin_unique_values[0]} are X% lower/higer; {bin_unique_values[0]} average is X times/% higher/lower than {bin_unique_values[1]}
-                    else:
-                        # want to see sig and non sig analysis
-                        if p2 <= self.siglvl:
-                            print(f"{self.S.plural_noun(self.granularity.title())} are different in {cont_var} between {bin_var} groups. P val of {p2:.2f}")
-                        else:
-                            print(f"{self.S.plural_noun(self.granularity.title())} have no significant difference in {cont_var} between {bin_var} groups. P val of {p2:.2f}")
+                    success, bin_cont_results = self.bin_x_cont_insights(pair_list=i)
+                    if success:
+                        bin_cont_results['analysis_type'] = k
+                        results.append(bin_cont_results)
+                        # bin_var, cont_var = i
+                        # bin_unique_values = list(set(self.df[bin_var].values))
 
+                        # # Filter out nans
+                        # tmpdf = self.df[self.df[bin_var].notnull() & (self.df[cont_var].notnull())]
+                        # _, p2 = stats.ttest_ind(tmpdf[cont_var], tmpdf[bin_var])
+                        # if self.only_significant:
+                        #     if p2 <= self.siglvl:
+                        #         ins = f"{bin_unique_values[0]} and {bin_unique_values[1]} "\
+                        #               f"{self.S.plural_noun(self.granularity)} differ in {cont_var}. P val of {p2:.2f}"
+                        #         # TODO: {bin_unique_values[0]} are X% lower/higer; {bin_unique_values[0]} average is X times/% higher/lower than {bin_unique_values[1]}
+                        #         results.append({
+                        #             'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins, 'p_val': p2,
+                        #             'magnitude': np.nan, 'col_1': bin_var, 'col_2': cont_var, 'analysis_type': k
+                        #         })
+                        # else:
+                        #     # want to see sig and non sig analysis
+                        #     if p2 <= self.siglvl:
+                        #         ins = f"{self.S.plural_noun(self.granularity.title())} are different in {cont_var} between"\
+                        #               f" {bin_var} groups. P val of {p2:.2f}"
+                        #         results.append({
+                        #             'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins, 'p_val': p2,
+                        #             'magnitude': np.nan, 'col_1': bin_var, 'col_2': cont_var, 'analysis_type': k
+                        #         })
+                        #     else:
+                        #         ins = f"{self.S.plural_noun(self.granularity.title())} have no significant difference in "\
+                        #               f"{cont_var} between {bin_var} groups. P val of {p2:.2f}"
+                        #         results.append({
+                        #             'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins, 'p_val': p2,
+                        #             'magnitude': np.nan, 'col_1': bin_var, 'col_2': cont_var, 'analysis_type': k
+                        #         })
             elif k == 'cat X cont':
-                print('---- Running cat X cont ---- ')
                 for i in v:
-                    cat_var, cont_var = i
-                    tmpdf = self.df[self.df[cat_var].notnull() & (self.df[cont_var].notnull())]  # Filter out nans
-                    try:
-                        # Anova
-                        grps = pd.unique(tmpdf[cat_var].values)
-                        d_data = {grp: tmpdf[cont_var][tmpdf[cat_var] == grp] for grp in grps}
-                        f, p = stats.f_oneway(*d_data.values())
-                    except Exception as e:
-                        print('*** ', e.args, f'{cont_var} and {cat_var}')
-                        print()
-                    else:
-                        if self.only_significant:
-                            if p <= self.siglvl:
-                                print(f"{self.granularity.title()} are different in {cont_var} between {cat_var} groups. P val of {p:.3f}")
-                        else:
-                            # want to see sig and non sig analysis
-                            if p <= self.siglvl:
-                                print(f"{self.granularity.title()} are different in {cont_var} between {cat_var} groups. P val of {p:.3f}")
-                            else:
-                                print(f"{self.granularity.title()} have no significant difference in {cont_var} between {cat_var} groups. P val of {p:.3f}")
+                    success, cat_cont_results = self.cat_x_cont_insights(pair_list=i)
+                    if success:
+                        cat_cont_results['analysis_type'] = k
+                        results.append(cat_cont_results)
 
             elif k == 'cont X cont':
-                print('---- cont X cont ---- ')
+                # print('---- cont X cont ---- ')
                 # check correlations
 
                 for i in v:
@@ -296,22 +395,55 @@ class AutoInsightsLong(object):
                     if self.only_significant:
                         if pval <= self.siglvl:
                             if coef >= 0.4:
-                                print(f"Strong positive correlation between {self.granularity.title()}{col_1} and {col_2} {coef:.2f}. P val of {pval:.2f}")
+                                ins = f"Strong positive correlation between {self.granularity.title()}{col_1} and " \
+                                      f"{col_2} {coef:.2f}. "
+                                results.append({
+                                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                    'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                    'analysis_type': k
+                                })
+
                             elif coef < -0.4:
-                                print(f"Strong negative correlation between {col_1} and {col_2} {coef:.2f}. P val of {pval:.2f}")
+                                ins = f"Strong negative correlation between {self.granularity.title()}{col_1} and " \
+                                      f"{col_2} {coef:.2f}. "
+                                results.append({
+                                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                    'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                    'analysis_type': k
+                                })
                             elif -0.2 <= coef <= 0.2:
-                                print(f"Weak correlation between {col_1} and {col_2} {coef:.2f}. P val of {pval:.2f}")
+                                ins = f"Weak correlation between {col_1} and {col_2} {coef:.2f}. "
+                                results.append({
+                                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                    'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                    'analysis_type': k
+                                })
                     else:
                         # want to see sig and non sig analysis
                         if coef >= 0.4:
-                            print(f"{col_1} and {col_2} have strong positive correlation of {coef:.2f}. P val of {pval:.2f}")
+                            ins = f"{col_1} and {col_2} have strong positive correlation of {coef:.2f}. "
+                            results.append({
+                                'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                'analysis_type': k
+                            })
                         elif coef < -0.4:
-                            print(f"{col_1} and {col_2} have strong negative correlation of {coef:.2f}. P val of {pval}")
+                            ins = f"{col_1} and {col_2} have strong negative correlation of {coef:.2f}. "
+                            results.append({
+                                'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                'analysis_type': k
+                            })
                         else:
-                            print(f"{col_1} and {col_2} little to no correlation of {coef:.2f}. P val of {pval:.2f}")
+                            ins = f"{col_1} and {col_2} little to no correlation of {coef:.2f}. "
+                            results.append({
+                                'date': self.run_date, 'dataset': self.dataset, 'insight_text': ins,
+                                'p_val': round(pval, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                                'analysis_type': k
+                            })
 
-            print()
-        return None
+        results_df = pd.DataFrame(results)
+        return results_df
 
     def main(self):
 
