@@ -7,21 +7,31 @@ import pandas_profiling as pp
 import pandas as pd
 import numpy as np
 from faker import Factory
-from datetime import datetime
+import datetime as dt
 import random
 from scipy import stats
-import re
 import sys
 from collections import defaultdict
 import itertools
 from src.inflect import inflect
-import speak_easy
+import utils
+import database
+import config
 
 
-class AutoInsightsLong(object):
+class AutoBroccoli(object):
     """Designed for long data"""
-    def __init__(self, df=None, categorical_as_ints=False, only_significant=False, sig_level=0.05,
-                 min_samples=30):
+    def __init__(self, df=None, categorical_as_ints=False, only_significant=False, sig_level=0.05, min_samples=30,
+                 specific_config=None, table_name=None):
+        self.dbi = database.DBInterface()
+        if specific_config:
+            self.running_config = specific_config
+        else:
+            self.running_config = config.IN_USE
+        if table_name:
+            self.table_name = table_name
+        else:
+            self.table_name = 'test'
         self.S = inflect.engine()
         self.siglvl = sig_level
         self.min_samples = min_samples
@@ -41,9 +51,9 @@ class AutoInsightsLong(object):
             self.faker = Factory.create()
             self.df = pd.DataFrame([self.example_record() for _ in range(1000)])
             self.dataset = 'random'
-        # self.granularity = self.intro()
-        self.run_date = datetime.strftime(datetime.now(), "%Y-%m-%d_%H:%M:%S")
-        self.analysis_dict = {
+        # self.granularity = self.intro()  # TODO: consider introducing this later
+        self.run_date = dt.datetime.utcnow().strftime("%m-%d-%y")
+        self.analysis_func_dict = {
             'bin X cat': self.bin_x_cat_insights,
             'bin X bin': self.bin_x_bin_insights,
             'bin X cont': self.bin_x_cont_insights,
@@ -74,7 +84,7 @@ class AutoInsightsLong(object):
 
     def date_between(self, d1, d2):
         f = '%b%d-%Y'
-        return self.faker.date_time_between_dates(datetime.strptime(d1, f), datetime.strptime(d2, f))
+        return self.faker.date_time_between_dates(dt.datetime.strptime(d1, f), dt.datetime.strptime(d2, f))
 
     def example_record(self):
         """Generates a basic row of data for example data"""
@@ -108,26 +118,16 @@ class AutoInsightsLong(object):
         else:
             raise ValueError(f'{column} not a binary variable? Unique values are : {unique_values}')
 
-    @staticmethod
-    def id_column_check(string):
-        """Takes in a column and returns a check to see if it thinks it's an identifier column"""
-        success = re.match(r'\w*ID|\w*Id|\w*_ID|\w*_Id|\w*_id|account', string, re.IGNORECASE)
-        if success:
-            return True
-        else:
-            return False
+    def classify_column_types(self, ddf) -> dict:
+        """One of the most important functions. This goes beyond Pandas Profiling to attempt to understand the
+        analytical type of each column.
 
-    @staticmethod
-    def check_list_is_contiguous(list_of_ints) -> bool:
-        """Checks that a list of ints is contiguous
-        https://stackoverflow.com/questions/28885455/python-check-whether-list-is-sequential-or-not
+        Args:
+            ddf: pandas Dataframe, pandas profiling description of data; equivalent of
+                 pp.ProfileReport(df).get_description()['variables']
+        Returns:
+            dict, keys are analytical qualifiers (binary, continuous, etc) and values are lists of columns matching
         """
-        sorted_list = sorted(list_of_ints)
-        it = (x for x in sorted_list)
-        first = next(it)
-        return all(a == b for a, b in enumerate(it, first + 1))
-
-    def classify_column_types(self, ddf):
         _MEMO = defaultdict(list)
 
         for row in ddf.itertuples():
@@ -154,7 +154,7 @@ class AutoInsightsLong(object):
                 if self.categorical_as_ints:
                     # Here we will see if numerical columns are actually categoricals
                     # NOTE: makes the assumption that at each category was selected at least once
-                    if row.distinct_count < self.categorical_int_cutoff and self.check_list_is_contiguous(values):
+                    if row.distinct_count < self.categorical_int_cutoff and utils.check_list_is_contiguous(values):
                         _MEMO['categorical'].append(row.Index)
 
                     elif row.distinct_count == 2 and len(value_counts) == 2:
@@ -167,7 +167,7 @@ class AutoInsightsLong(object):
                         _MEMO['continuous'].append(row.Index)
                 else:
                     # Now any number should only represent a scalar
-                    if row.is_unique and self.id_column_check(row.Index):  # should match for any well labeled id column
+                    if row.is_unique and utils.id_column_check(row.Index):  # should match for any well labeled id column
                         _MEMO['unique identifier'].append(row.Index)
 
                     # elif row.is_unique and isinstance(ddf.loc[row.Index]['mode'], (float, int)):
@@ -278,7 +278,7 @@ class AutoInsightsLong(object):
             insights += f"Significant difference in '{bin_label_1}' and '{bin_label_2}' between '{cat_var}' groups. "
 
         if (self.only_significant and insights) or not self.only_significant:
-            insights += speak_easy.cool_crosstabs(xtab, cat_var)
+            insights += utils.crosstabs_on_binary_v_categorical(xtab, cat_var)
             # TODO: What to do about the magnitude?
             if insights:
                 return True, {
@@ -317,8 +317,8 @@ class AutoInsightsLong(object):
             insights += f"Significant difference in the '{bin_1_label_1}' and '{bin_1_label_2}' groups when " \
                         f"comparing to '{bin_2_label_1}' and '{bin_2_label_2}' groups. "
         if (self.only_significant and insights) or not self.only_significant:
-            insights += speak_easy.analyze_xtab_column_frequency(xtabc, dict_, label='bin2_labels')
-            insights += speak_easy.analyze_xtab_column_frequency(fxtab, dict_, label='bin1_labels')
+            insights += utils.analyze_xtab_column_frequency(xtabc, dict_, label='bin2_labels')
+            insights += utils.analyze_xtab_column_frequency(fxtab, dict_, label='bin1_labels')
             if insights:
                 return True, {
                     'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p, 4),
@@ -343,7 +343,7 @@ class AutoInsightsLong(object):
             insights += f"Significant difference in {bin_label_1} and {bin_label_2} in {cont_var}. "
 
         if (self.only_significant and insights) or not self.only_significant:
-            insights += speak_easy.tight_t_test(bin_label_1, bin_label_2, cont_var, pos_desc, neg_desc)
+            insights += utils.independent_t_test(bin_label_1, bin_label_2, cont_var, pos_desc, neg_desc)
             if insights:
                 return True, {
                     'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
@@ -375,7 +375,7 @@ class AutoInsightsLong(object):
             insights += f"Significant difference across groups in {cat_var} in {cont_var}. "
 
         if (self.only_significant and insights) or not self.only_significant:
-            insights += speak_easy.cool_categories()
+            insights += utils.cool_categories()
             if insights:
                 return True, {
                     'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
@@ -395,7 +395,7 @@ class AutoInsightsLong(object):
             insights += f"There is a strong relationship between {col_1} in {col_2}"
 
         if (self.only_significant and insights) or not self.only_significant:
-            insights += speak_easy.cool_correlations(insights, coef, p_val, self.siglvl, col_1=col_1, col_2=col_2)
+            insights += utils.correlations(insights, coef, p_val, self.siglvl, col_1=col_1, col_2=col_2)
             if insights:
                 return True, {
                     'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
@@ -417,7 +417,7 @@ class AutoInsightsLong(object):
         """
         results = []
         for k, v in d_.items():
-            func = self.analysis_dict.get(k)
+            func = self.analysis_func_dict.get(k)
             if func:
                 for i in v:
                     success, result = func(i)
@@ -442,10 +442,13 @@ class AutoInsightsLong(object):
 
         # Step four: run the analytics!
         _df = self.auto_analysis(d_=analytics_dict)
+        if self.running_config.WRITE_TO_DB:
+            self.dbi.save_to_table(_df, table_name=self.table_name, replace_or_append=self.running_config.DB_WRITE_MODE)
+            print(f'Saved results to table {self.table_name}.')
         return _df
 
 
 if __name__ == '__main__':
-    ai = AutoInsightsLong()
+    ai = AutoBroccoli()
     df = ai.main()
     print(df)
