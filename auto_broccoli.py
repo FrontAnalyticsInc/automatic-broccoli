@@ -13,7 +13,6 @@ from scipy import stats
 import sys
 from collections import defaultdict
 import itertools
-from src.inflect import inflect
 import utils
 import database
 import config
@@ -32,7 +31,6 @@ class AutoBroccoli(object):
             self.table_name = table_name
         else:
             self.table_name = 'test'
-        self.S = inflect.engine()
         self.siglvl = sig_level
         self.min_samples = min_samples
         if categorical_as_ints:
@@ -51,7 +49,7 @@ class AutoBroccoli(object):
             self.faker = Factory.create()
             self.df = pd.DataFrame([self.example_record() for _ in range(1000)])
             self.dataset = 'random'
-        # self.granularity = self.intro()  # TODO: consider introducing this later
+        # self.granularity = self.intro()  #TODO: consider introducing this later
         self.run_date = dt.datetime.utcnow().strftime("%m-%d-%y")
         self.analysis_func_dict = {
             'bin X cat': self.bin_x_cat_insights,
