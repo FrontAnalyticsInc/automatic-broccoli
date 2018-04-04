@@ -3,19 +3,20 @@
 
 """http://faker.readthedocs.io/en/master/providers/faker.providers.address.html?highlight=random"""
 
-import pandas_profiling as pp
-import pandas as pd
-import numpy as np
-from faker import Factory
 import datetime as dt
+import itertools
 import random
-from scipy import stats
 import sys
 from collections import defaultdict
-import itertools
-import utils
-import database
+
 import config
+import numpy as np
+import pandas as pd
+import pandas_profiling as pp
+from faker import Factory
+from scipy import stats
+
+from auto_broccoli import utils, database
 
 
 class AutoBroccoli(object):
@@ -43,7 +44,7 @@ class AutoBroccoli(object):
             self.only_significant = False
         self.categorical_int_cutoff = 15
         if df is not None:
-            self.df = df
+            self.df = pd.read_csv(df)
             self.dataset = 'custom'
         else:
             self.faker = Factory.create()
@@ -338,7 +339,7 @@ class AutoBroccoli(object):
         t, p_val = stats.ttest_ind_from_stats(mean1=pos_desc['mean'], std1=pos_desc['std'], nobs1=pos_desc['count'],
                                               mean2=neg_desc['mean'], std2=neg_desc['std'], nobs2=neg_desc['count'])
         if p_val <= self.siglvl:
-            insights += f"Significant difference in {bin_label_1} and {bin_label_2} in {cont_var}. "
+            insights += f'Significant difference in "{bin_label_1}" and "{bin_label_2}" in "{cont_var}". '
 
         if (self.only_significant and insights) or not self.only_significant:
             insights += utils.independent_t_test(bin_label_1, bin_label_2, cont_var, pos_desc, neg_desc)
@@ -370,7 +371,7 @@ class AutoBroccoli(object):
         f, p_val = stats.f_oneway(*d_data.values())
 
         if p_val <= self.siglvl:
-            insights += f"Significant difference across groups in {cat_var} in {cont_var}. "
+            insights += f'Significant difference across groups in "{cat_var}" in "{cont_var}". '
 
         if (self.only_significant and insights) or not self.only_significant:
             insights += utils.cool_categories()
@@ -388,16 +389,14 @@ class AutoBroccoli(object):
         """"""
         col_1, col_2 = pair_list
         coef, p_val = stats.pearsonr(self.df[col_1], self.df[col_2])
-        insights = ""
-        if p_val <= self.siglvl:
-            insights += f"There is a strong relationship between {col_1} in {col_2}"
 
-        if (self.only_significant and insights) or not self.only_significant:
-            insights += utils.correlations(insights, coef, p_val, self.siglvl, col_1=col_1, col_2=col_2)
-            if insights:
+        if (self.only_significant and p_val <= self.siglvl) or not self.only_significant:
+            insight_text = utils.correlations(coef, p_val, self.siglvl, col_1=col_1, col_2=col_2)
+            if insight_text:
                 return True, {
-                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': insights, 'p_val': round(p_val, 4),
-                    'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2, 'analysis': 'Pearson corr'
+                    'date': self.run_date, 'dataset': self.dataset, 'insight_text': insight_text,
+                    'p_val': round(p_val, 4), 'magnitude': np.nan, 'col_1': col_1, 'col_2': col_2,
+                    'analysis': 'Pearson corr'
                 }
             else:
                 return False, {}

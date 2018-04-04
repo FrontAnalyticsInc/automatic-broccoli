@@ -76,15 +76,15 @@ def crosstabs_on_binary_v_categorical(xtab, cat_column_name) -> str:
 
     # insights checker
     if bin1_max_cat == bin2_max_cat:
-        insights += f'{bin1_max_cat} is the top category for both {bin1} at {bin1_max_val} and {bin2} at ' \
-                    f'{bin2_max_val} for "{cat_column_name}". '
+        insights += f'"{bin1_max_cat}" is the top category for both {bin1} at {bin1_max_val} and {bin2} at ' \
+                    f'"{bin2_max_val}" for "{cat_column_name}". '
 
     if bin1_max_cat == bin2_min_cat:
         insights += f'{bin1.title()} and {bin2.title()} are the farthest apart on "{bin1_max_cat}" in ' \
                     f'"{cat_column_name}". {bin1.title()} maximum on {bin1_max_cat} is {bin1_max_val} and ' \
                     f'{bin2} minimum is on {bin1_max_cat} at {bin2_min_val}. '
 
-    if bin2_max_cat == bin1_min_cat:
+    elif bin2_max_cat == bin1_min_cat:
         insights += f'{bin2.title()} and {bin1.title()} are the farthest apart on "{bin2_max_cat}" in ' \
                     f'"{cat_column_name}". {bin2.title()} maximum on {bin2_max_cat} is {bin2_max_val} and ' \
                     f'{bin1} minimum is on {bin2_max_cat} at {bin1_min_val}. '
@@ -149,17 +149,19 @@ def independent_t_test(bin_label_0, bin_label_1, cont_var, pos_desc, neg_desc, c
     return insight
 
 
-def correlations(insights, coef, pval, pval_threshold, col_1, col_2):
+def correlations(coef, pval, pval_threshold, col_1, col_2):
     """"""
+    insights = ""
     if pval <= pval_threshold:
+        insights += f'There is a strong relationship between "{col_1}" in "{col_2}"'
         if coef <= -0.35:
-            insights += f"As {col_1} increases {col_2} decreases with coef of {coef:.2f}. "
+            insights += f" . As {col_1} increases {col_2} decreases with coef of {coef:.2f}. "
         elif -0.35 < coef <= 0.35:
             insights += f" with coef of {coef:.2f}."
         elif 0.35 < coef <= 0.75:
-            insights += f"As {col_1} increases {col_2} increases with coef of {coef:.2f}. "
+            insights += f" . As {col_1} increases {col_2} increases with coef of {coef:.2f}. "
         elif coef > 0.75:
-            insights += f"{col_1} increases nearly linearly with respect to {col_2}. "
+            insights += f" . {col_1} increases nearly linearly with respect to {col_2}. "
     else:
         insights += f"Not likely a linear relationship in {col_1} in {col_2} with with coef of {coef:.2f}"
     return insights

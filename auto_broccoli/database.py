@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-from sqlalchemy import create_engine
 import pandas as pd
+from sqlalchemy import create_engine
+
 import config
 
 
