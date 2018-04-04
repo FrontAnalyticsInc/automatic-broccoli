@@ -1,15 +1,14 @@
-# automatic-broccoli :crystal_ball:
-
-> "You need to write SQL to analyze a database"  
- Automatic Broccoli is there for when you don't know what to look for yet; for when you don't know what exists so you can't write the SQL. 
+# Automatic Broccoli
+Because Broccoli is good for you, and so is this repo! 
 
 ## Why?
-We wanted to create a data product to support hard-coded dashboard logic by running tests on things we didn't hard code in the background. To run asyncronously to other jobs / queries while using clever caching for speed and retrieval to ask questions and find connections and useful insights.
+You need to write SQL to analyze a database. Often times an ad-hoc analysis findings can lead to hard-coded relationships that get put into dashboards excluding relationships that might not have been found or non-existent at the time of the analysis.
+We wanted to create a data product to support hard-coded dashboard logic by running tests on things we didn't hard code in the background. To run asyncronously to other jobs / queries to ask questions and find connections and useful insights.
 
 ## Prior Art
 [Pandas Profiling](https://github.com/pandas-profiling/pandas-profiling) has done a lot of the heavy lifting for doing inital dataset exploratory data analysis (EDA). It does a great job of generating profile reports in HTML format for a dataset, saving an analyst a lot of time going through that process on their own. This project builds on top of the shoulders of Pandas Profiling by going a few steps further.
 
-## How is Automatic Broccoli different?
+#### How is Automatic Broccoli different?
 Current tools do a great job of identifying the datatype of a column, like a numeric, date, string, etc. Using that knowledge descriptive stats can be produced...and that's about where it stops.
 
 Automatic Broccoli goes further in attempting to identify not only the type of column, but its analytical possibilities, especially in relation to the other columns present. Currently, it can detect if a column is a binary, categorical, or continuous and then prepares a dictionary of possible unique combinations of analyses that can be tested. 
