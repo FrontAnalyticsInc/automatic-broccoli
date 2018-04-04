@@ -16,18 +16,18 @@ Automatic Broccoli goes further in attempting to identify not only the type of c
 ## Example
 
 ```python
->>> from auto_broccoli import AutoBroccoli
+>>> import auto_broccoli as broc
 >>> import pandas_profiling as pp
 
->>> ai = AutoBroccoli(df=None)  # if df=None, it autogenerates it's own data
+>>> ab = broc.AutoBroccoli()  # if df=None, it autogenerates it's own data
 
 >>> # Step 1: run the awesome pandas profiling
->>> pobject = pp.ProfileReport(ai.df)
+>>> pobject = pp.ProfileReport(ab.df)
 >>> des = pobject.get_description()
 
 >>> # Step 2: identify analytical types of variables
 >>> analytics_df = des['variables']
->>> type_dict = ai.classify_column_types(analytics_df)
+>>> type_dict = ab.classify_column_types(analytics_df)
 >>> type_dict
 {'binary': ['active', 'nice_person'],
  'categorical': ['buyer_type', 'content_type'],
@@ -38,7 +38,7 @@ Automatic Broccoli goes further in attempting to identify not only the type of c
 Notice how it classified the columns for their analytical potential. Then you can create the analytical buckets like this:
 ```python
 >>> # Step three: set them into analytical buckets
->>> analytics_dict = ai.create_analytical_buckets(type_dict)
+>>> analytics_dict = ab.create_analytical_buckets(type_dict)
 >>> analytics_dict
 {'bin X bin': [('active', 'nice_person')],
  'bin X cat': [['active', 'buyer_type'],
@@ -64,9 +64,17 @@ Notice how it classified the columns for their analytical potential. Then you ca
 An analytics dataframe can then be generated, yielding the columns that were used and the insight(s) found, if any. Other columns exist but weren't included in this example due to space constraints.
 ```python
 >>> # Step four: run the analytics!
->>> resultsdf = ai.auto_analysis(d_=analytics_dict)
+>>> resultsdf = ab.auto_analysis(d_=analytics_dict)
 resultsdf
 ```
+Or you can run the above like this
+```python
+>>> ab = broc.AutoBroccoli()
+>>> resultsdf = ab.main()
+resultsdf
+```
+
+
 
 analysis      |  analysis_type  |  col_1             |  col_2             |  dataset  |  date      |  insight_text                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |  p_val
 --------------|-----------------|--------------------|--------------------|-----------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------
