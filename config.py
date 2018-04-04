@@ -17,7 +17,7 @@ class DevConfig(Config):
     """Development configuration."""
 
     ENV = 'dev'
-    WRITE_TO_DB = True
+    WRITE_TO_DB = False
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(Config.BASE_DIR, "insights.db")
 
 
